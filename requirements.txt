@@ -1,0 +1,8 @@
+fastapi>=0.110
+pydantic>=2.6
+msgpack>=1.0
+PyYAML>=6.0
+brotli>=1.1
+requests>=2.31.0
+lz4>=4.4.5
+peewee>=3.17
