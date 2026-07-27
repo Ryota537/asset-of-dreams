@@ -11,10 +11,6 @@ jobs:
     permissions:
       contents: write
 
-    defaults:
-      run:
-        working-directory: instance
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
