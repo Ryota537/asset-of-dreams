@@ -60,46 +60,61 @@ def _download(url: str, dest: Path) -> str:
     return "ok"
 
 
+def download_assets_for_kind_platform(
+    kind: str,
+    platform: str,
+    assets_dir: Path = ASSETS,
+    workers: int = 16,
+    limit: int = 0,
+    version: str = None,
+) -> int:
+    if version is None:
+        version = str(environment().asset_version)
+    root = assets_dir / kind / platform.lower()
+    catalog = root / "catalog.json"
+    if not catalog.is_file():
+        print(f"{kind}/{platform}: no catalog (run download_asset_catalogs)")
+        return 0
+    rels = bundle_rel_paths(catalog)
+    if limit:
+        rels = rels[:limit]
+    print(f"Downloading {kind}/{platform}: {len(rels)} bundles")
+
+    ok = skip = err = done = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(
+                _download,
+                f"{ASSET_URL}/{kind}/{platform}/{version}/{rel}",
+                root / rel,
+            ): rel
+            for rel in rels
+        }
+        for fut in as_completed(futures):
+            done += 1
+            try:
+                res = fut.result()
+                ok += res == "ok"
+                skip += res == "skip"
+            except urllib.error.HTTPError as e:
+                err += 1
+                print(f"  ! {futures[fut]} ({e.code})")
+            except Exception as e:  # noqa: BLE001
+                err += 1
+                print(f"  ! {futures[fut]} ({type(e).__name__})")
+            if done % 200 == 0 or done == len(rels):
+                print(f"  {done}/{len(rels)} ok={ok} skip={skip} err={err}")
+    return len(rels)
+
+
 def download_all_assets_func(assets_dir: Path = ASSETS, workers: int = 16, limit: int = 0) -> int:
     version = str(environment().asset_version)
     grand_total = 0
     for kind in KINDS:
         for platform in PLATFORMS:
-            root = assets_dir / kind / platform.lower()
-            catalog = root / "catalog.json"
-            if not catalog.is_file():
-                print(f"{kind}/{platform}: no catalog (run download_asset_catalogs)")
-                continue
-            rels = bundle_rel_paths(catalog)
-            if limit:
-                rels = rels[:limit]
-            grand_total += len(rels)
-            print(f"Downloading {kind}/{platform}: {len(rels)} bundles")
-
-            ok = skip = err = done = 0
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = {
-                    pool.submit(
-                        _download,
-                        f"{ASSET_URL}/{kind}/{platform}/{version}/{rel}",
-                        root / rel,
-                    ): rel
-                    for rel in rels
-                }
-                for fut in as_completed(futures):
-                    done += 1
-                    try:
-                        res = fut.result()
-                        ok += res == "ok"
-                        skip += res == "skip"
-                    except urllib.error.HTTPError as e:
-                        err += 1
-                        print(f"  ! {futures[fut]} ({e.code})")
-                    except Exception as e:  # noqa: BLE001
-                        err += 1
-                        print(f"  ! {futures[fut]} ({type(e).__name__})")
-                    if done % 200 == 0 or done == len(rels):
-                        print(f"  {done}/{len(rels)} ok={ok} skip={skip} err={err}")
+            grand_total += download_assets_for_kind_platform(
+                kind, platform, assets_dir=assets_dir, workers=workers, limit=limit, version=version
+            )
 
     print(f"total bundles processed: {grand_total}")
     return grand_total

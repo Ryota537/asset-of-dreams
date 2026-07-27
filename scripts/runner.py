@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -30,7 +31,10 @@ from scripts.download_asset_catalogs import (
     get_catalog_version,
     download_catalogs,
 )
-from scripts.download_all_assets import download_all_assets_func
+from scripts.download_all_assets import (
+    download_all_assets_func,
+    download_assets_for_kind_platform,
+)
 
 KINDS = ("2d-assets", "3d-assets", "cri-assets")
 PLATFORMS = ("Android", "iOS")
@@ -220,17 +224,22 @@ def main():
         print("\n--- Processing Asset Catalogs & Bundles ---")
         assets_dir = project_root / "_data" / "assets"
         download_catalogs(assets_dir)
-        download_all_assets_func(assets_dir)
 
-        print("\nPackaging Asset Bundles per kind & platform...")
+        print("\nDownloading, packaging, and cleaning Asset Bundles per kind & platform...")
         for kind in KINDS:
             for platform in PLATFORMS:
                 source_dir = assets_dir / kind / platform.lower()
+                print(f"\n--- Processing {kind} ({platform}) ---")
+                download_assets_for_kind_platform(kind, platform, assets_dir=assets_dir)
+
                 if source_dir.exists():
                     zip_name = f"{kind}-{platform.lower()}.zip"
                     zip_path = output_dir / zip_name
                     create_zip_from_dir(source_dir, zip_path)
                     files_to_upload.append(zip_path)
+
+                    print(f"Removing source directory to free disk space: {source_dir}")
+                    shutil.rmtree(source_dir, ignore_errors=True)
 
     print(f"\n--- Creating GitHub Release '{release_tag}' ---")
     notes = (
