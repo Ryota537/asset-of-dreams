@@ -52,7 +52,7 @@ def fetch_github_releases() -> list[dict]:
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     repo = os.environ.get("GITHUB_REPOSITORY")
     if not repo:
-        print("GITHUB_REPOSITORY not set. Treating as run with no existing releases.")
+        print("[GitHub API] GITHUB_REPOSITORY not set. Treating as run with no existing releases.")
         return []
 
     url = f"https://api.github.com/repos/{repo}/releases"
@@ -63,16 +63,19 @@ def fetch_github_releases() -> list[dict]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
+    print(f"[GitHub API] Fetching existing releases for repository: {repo}...")
     req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            return data if isinstance(data, list) else []
+            releases = data if isinstance(data, list) else []
+            print(f"[GitHub API] Successfully retrieved {len(releases)} existing release(s).")
+            return releases
     except urllib.error.HTTPError as e:
-        print(f"GitHub API request error ({e.code} {e.reason})")
+        print(f"[GitHub API Error] ({e.code} {e.reason}) while fetching releases from {url}")
         return []
     except Exception as e:
-        print(f"Error fetching GitHub releases: {e}")
+        print(f"[GitHub API Error] Exception occurred while fetching releases: {e}")
         return []
 
 
@@ -84,11 +87,17 @@ def analyze_release_status(
       action: 'RELEASE_BOTH' | 'RELEASE_MASTERDATA_ONLY' | 'SKIP'
       release_tag: str
     """
+    print("\n--- Analyzing Release Status ---")
     catalog_release = None
     for r in releases:
         if r.get("tag_name") == catalog_version:
             catalog_release = r
             break
+
+    if catalog_release:
+        print(f"  Catalog Release Status : FOUND (Tag '{catalog_version}')")
+    else:
+        print(f"  Catalog Release Status : NOT FOUND (No release matching catalog version '{catalog_version}')")
 
     masterdata_found = False
     increment_nums = []
@@ -108,17 +117,22 @@ def analyze_release_status(
                     masterdata_found = True
                     break
 
+    if masterdata_found:
+        print(f"  Masterdata Status      : FOUND (Masterdata '{masterdata_version_safe}' exists in GitHub Releases)")
+    else:
+        print(f"  Masterdata Status      : NOT FOUND (Masterdata '{masterdata_version_safe}' missing from releases)")
+
     if catalog_release is None:
-        # Both / assets are outdated -> Combine into single release tagged with catalog_version
+        print(f"  Analysis Result        : RELEASE_BOTH -> Catalog version '{catalog_version}' is new. Will release both assets & masterdata.")
         return "RELEASE_BOTH", catalog_version
 
     if not masterdata_found:
-        # Only masterdata is outdated -> Upload masterdata only with tag {catalog_version}-{increment_num}
         next_inc = max(increment_nums) + 1 if increment_nums else 1
         new_tag = f"{catalog_version}-{next_inc}"
+        print(f"  Analysis Result        : RELEASE_MASTERDATA_ONLY -> Catalog is up-to-date, but new masterdata detected. Will release masterdata under incremental tag '{new_tag}'.")
         return "RELEASE_MASTERDATA_ONLY", new_tag
 
-    # Neither is outdated
+    print("  Analysis Result        : SKIP -> Both catalog and masterdata are already up-to-date in GitHub Releases.")
     return "SKIP", catalog_version
 
 
@@ -140,10 +154,15 @@ def create_github_release(
         cmd.append(str(f))
 
     print(f"\nPublishing GitHub Release '{tag_name}'...")
-    print(f"Command: {' '.join(cmd)}")
+    print(f"Files to upload ({len(files_to_upload)}):")
+    for f in files_to_upload:
+        size_mb = f.stat().st_size / (1024 * 1024) if f.exists() else 0
+        print(f"  - {f.name} ({size_mb:.2f} MB)")
+    print(f"Executing Command: {' '.join(cmd)}")
+
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
-        print(f"gh release create failed:\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}")
+        print(f"gh release create failed (Exit Code {res.returncode}):\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}")
         sys.exit(res.returncode)
     print(f"Successfully published release '{tag_name}'!")
 
