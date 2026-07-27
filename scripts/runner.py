@@ -40,19 +40,51 @@ KINDS = ("2d-assets", "3d-assets", "cri-assets")
 PLATFORMS = ("Android", "iOS")
 
 
-def create_zip_from_dir(source_dir: Path, zip_path: Path) -> Path:
-    """Compress all files in source_dir into zip_path."""
-    zip_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Creating zip {zip_path.name} from {source_dir}...")
-    file_count = 0
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file_path in source_dir.rglob("*"):
-            if file_path.is_file() and file_path != zip_path:
+def create_zips_from_dir(source_dir: Path, output_dir: Path, base_name: str) -> list[Path]:
+    """Compress all files in source_dir into output_dir, splitting into multiple zips if size > 1.8 GB."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    all_files = [f for f in source_dir.rglob("*") if f.is_file()]
+    if not all_files:
+        return []
+
+    # Sort files deterministically (catalog.json first)
+    all_files.sort(key=lambda p: (0 if p.name == "catalog.json" else 1, str(p)))
+
+    MAX_BYTES_PER_ZIP = 1_800_000_000  # 1.8 GB threshold (below GitHub 2 GiB limit)
+
+    batches = []
+    current_files = []
+    current_size = 0
+
+    for file_path in all_files:
+        fsize = file_path.stat().st_size
+        if current_files and (current_size + fsize > MAX_BYTES_PER_ZIP):
+            batches.append(current_files)
+            current_files = [file_path]
+            current_size = fsize
+        else:
+            current_files.append(file_path)
+            current_size += fsize
+
+    if current_files:
+        batches.append(current_files)
+
+    created_zips = []
+    for idx, batch in enumerate(batches, start=1):
+        zip_name = f"{base_name}.zip" if len(batches) == 1 else f"{base_name}-{idx}.zip"
+        zip_path = output_dir / zip_name
+        print(f"Creating zip {zip_path.name} from {source_dir} ({len(batch)} file(s), part {idx}/{len(batches)})...")
+        file_count = 0
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file_path in batch:
                 arcname = file_path.relative_to(source_dir)
                 zf.write(file_path, arcname)
                 file_count += 1
-    print(f"  compressed {file_count} files -> {zip_path.name} ({zip_path.stat().st_size} bytes)")
-    return zip_path
+        size_mb = zip_path.stat().st_size / (1024 * 1024)
+        print(f"  compressed {file_count} files -> {zip_path.name} ({size_mb:.2f} MB)")
+        created_zips.append(zip_path)
+
+    return created_zips
 
 
 def fetch_github_releases() -> list[dict]:
@@ -216,9 +248,8 @@ def main():
         masterdata_dir = project_root / "_data" / "masterdata"
         download_and_unpack_masterdata(masterdata_dir)
 
-        masterdata_zip_path = output_dir / masterdata_zip_filename
-        create_zip_from_dir(masterdata_dir, masterdata_zip_path)
-        files_to_upload.append(masterdata_zip_path)
+        masterdata_zips = create_zips_from_dir(masterdata_dir, output_dir, masterdata_version_safe)
+        files_to_upload.extend(masterdata_zips)
 
     if action == "RELEASE_BOTH":
         print("\n--- Processing Asset Catalogs & Bundles ---")
@@ -229,14 +260,13 @@ def main():
         for kind in KINDS:
             for platform in PLATFORMS:
                 source_dir = assets_dir / kind / platform.lower()
+                base_name = f"{kind}-{platform.lower()}"
                 print(f"\n--- Processing {kind} ({platform}) ---")
                 download_assets_for_kind_platform(kind, platform, assets_dir=assets_dir)
 
                 if source_dir.exists():
-                    zip_name = f"{kind}-{platform.lower()}.zip"
-                    zip_path = output_dir / zip_name
-                    create_zip_from_dir(source_dir, zip_path)
-                    files_to_upload.append(zip_path)
+                    zips = create_zips_from_dir(source_dir, output_dir, base_name)
+                    files_to_upload.extend(zips)
 
                     print(f"Removing source directory to free disk space: {source_dir}")
                     shutil.rmtree(source_dir, ignore_errors=True)
