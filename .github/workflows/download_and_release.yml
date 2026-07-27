@@ -17,6 +17,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Free up space
+        uses: endersonmenezes/free-disk-space@v3
+        with:
+          remove_android: true
+          remove_dotnet: true
+          remove_folders: "/usr/share/swift /usr/local/julia"
+          rm_cmd: "rmz"
+          rmz_version: "3.1.1"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
