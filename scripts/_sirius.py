@@ -12,6 +12,7 @@ The Authenticate ApkHash / signature / app version are the constants of the offi
 import lz4.block
 import msgpack
 import requests
+from faker import Faker
 
 from helpers.msgpack import from_array, to_wire
 from models import (
@@ -20,6 +21,8 @@ from models import (
     AccountRegistResult,
     AuthenticateResult,
 )
+
+_fake = Faker("ja_JP")
 
 _LZ4_BLOCK = 99
 _LZ4_BLOCK_ARRAY = 98
@@ -118,9 +121,10 @@ def environment():
 
 
 def _session_token() -> str:
+    random_name = _fake.last_name()
     reg: AccountRegistResult = _result(
         _request(
-            "/api/Account/Register", payload=RegisterPayload(name="server-of-dreams")
+            "/api/Account/Register", payload=RegisterPayload(name=random_name)
         ),
         "AccountRegistResult",
     )
