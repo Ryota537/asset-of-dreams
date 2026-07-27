@@ -31,5 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          PYTHONUNBUFFERED: "1"
         run: |
-          python scripts/runner.py
+          python -u scripts/runner.py
+

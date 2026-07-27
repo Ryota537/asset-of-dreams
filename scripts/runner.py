@@ -18,6 +18,10 @@ for p in [str(project_root), str(instance_dir), str(current_dir)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+# Force unbuffered output so logs flush immediately in CI / GitHub Actions
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+
 from scripts.download_masterdata import (
     get_masterdata_version,
     download_and_unpack_masterdata,
