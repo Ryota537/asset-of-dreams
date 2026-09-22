@@ -178,6 +178,21 @@ def analyze_release_status(
     return "SKIP", catalog_version
 
 
+def next_free_tag(releases: list[dict], catalog_version: str) -> str:
+    """A release tag that does not exist yet.
+
+    ``gh release create`` fails when the tag is already taken, so a forced run must not
+    reuse the plain catalog version if a release for it is already published.
+    """
+    tags = {r.get("tag_name", "") for r in releases}
+    if catalog_version not in tags:
+        return catalog_version
+    n = 1
+    while f"{catalog_version}-{n}" in tags:
+        n += 1
+    return f"{catalog_version}-{n}"
+
+
 def create_github_release(
     tag_name: str, release_title: str, release_notes: str, files_to_upload: list[Path]
 ) -> None:
@@ -235,9 +250,11 @@ def main():
     masterdata_zip_filename = f"{masterdata_version_safe}.zip"
 
     if args.force:
-        # --force skips the whole version/release comparison: always RELEASE_BOTH, tagged
-        # with the current catalog version.
-        action, release_tag = "RELEASE_BOTH", catalog_version
+        # --force skips the whole version/release comparison and always releases everything.
+        # It still looks up the existing releases, because gh release create fails on a tag
+        # that is already taken -- a second forced run gets the next "-N" tag instead.
+        releases = fetch_github_releases()
+        action, release_tag = "RELEASE_BOTH", next_free_tag(releases, catalog_version)
         print("\n--- Analyzing Release Status ---")
         print("  --force given: skipping the release-status check.")
     else:

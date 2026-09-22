@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: '0 23 * * *'
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force: ignore the version/release check and download + release everything'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Dry run: report what would happen, download and publish nothing'
+        type: boolean
+        default: false
 
 jobs:
   check-and-release:
@@ -56,5 +65,10 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PYTHONUNBUFFERED: "1"
         run: |
-          python -u scripts/runner.py
+          # Scheduled runs have no inputs, so github.event.inputs.* is empty -> no flags.
+          ARGS=""
+          if [ "${{ inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          echo "python -u scripts/runner.py$ARGS"
+          python -u scripts/runner.py $ARGS
 
