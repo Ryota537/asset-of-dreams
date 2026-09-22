@@ -40,6 +40,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Build sprite-atlas index
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          # download_static_assets --skip-atlas needs this to tell a JewelShop icon that is a
+          # real loose file from one that only lives inside an atlas bundle. Without it that
+          # step warns and requests every path, and the atlas-backed ones 404.
+          # Non-fatal: the run continues without the index, just less efficiently.
+          python -u scripts/download_atlas_index.py || echo "atlas index build failed; continuing without it"
+
       - name: Run Check, Download, and Release Workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
