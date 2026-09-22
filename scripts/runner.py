@@ -35,6 +35,8 @@ from scripts.download_all_assets import (
     download_all_assets_func,
     download_assets_for_kind_platform,
 )
+from scripts.download_notations import download_notations_func
+from scripts.download_static_assets import download_static_assets_func
 
 KINDS = ("2d-assets", "3d-assets", "cri-assets")
 PLATFORMS = ("Android", "iOS")
@@ -210,6 +212,14 @@ def create_github_release(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="dry run check only without downloading or releasing")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "ignore the release-status check and always download + release everything "
+            "(masterdata, catalogs, bundles, notations, static-assets)"
+        ),
+    )
     args = parser.parse_args()
 
     print("=== Checking Masterdata & Asset Catalog Versions ===")
@@ -224,10 +234,17 @@ def main():
     masterdata_version_safe = masterdata_version.replace("/", "_")
     masterdata_zip_filename = f"{masterdata_version_safe}.zip"
 
-    releases = fetch_github_releases()
-    action, release_tag = analyze_release_status(
-        releases, catalog_version, masterdata_version_safe
-    )
+    if args.force:
+        # --force skips the whole version/release comparison: always RELEASE_BOTH, tagged
+        # with the current catalog version.
+        action, release_tag = "RELEASE_BOTH", catalog_version
+        print("\n--- Analyzing Release Status ---")
+        print("  --force given: skipping the release-status check.")
+    else:
+        releases = fetch_github_releases()
+        action, release_tag = analyze_release_status(
+            releases, catalog_version, masterdata_version_safe
+        )
 
     print(f"\nAction Decision: {action} (Release Tag: {release_tag})")
 
@@ -250,6 +267,27 @@ def main():
 
         masterdata_zips = create_zips_from_dir(masterdata_dir, output_dir, masterdata_version_safe)
         files_to_upload.extend(masterdata_zips)
+
+        # Notations and static-assets are both derived from the master data (LiveMaster /
+        # AnotherNotationMaster and BannerMaster / ComicMaster / JewelShopItemMaster), so
+        # they follow the master data rather than the asset catalog.
+        assets_dir = project_root / "_data" / "assets"
+
+        print("\n--- Processing Notations ---")
+        download_notations_func(assets_dir=assets_dir)
+        notations_dir = assets_dir / "Notations"
+        if notations_dir.exists():
+            files_to_upload.extend(create_zips_from_dir(notations_dir, output_dir, "notations"))
+            print(f"Removing source directory to free disk space: {notations_dir}")
+            shutil.rmtree(notations_dir, ignore_errors=True)
+
+        print("\n--- Processing Static Assets ---")
+        download_static_assets_func(assets_dir=assets_dir, skip_atlas=True, astc=True)
+        static_dir = assets_dir / "static-assets"
+        if static_dir.exists():
+            files_to_upload.extend(create_zips_from_dir(static_dir, output_dir, "static-assets"))
+            print(f"Removing source directory to free disk space: {static_dir}")
+            shutil.rmtree(static_dir, ignore_errors=True)
 
     if action == "RELEASE_BOTH":
         print("\n--- Processing Asset Catalogs & Bundles ---")
