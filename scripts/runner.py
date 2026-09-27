@@ -340,8 +340,8 @@ def main():
     print(f"\n--- Creating GitHub Release '{release_tag}' ---")
     notes = (
         f"Automated Release:\n"
-        f"- Asset Catalog Version: `{catalog_version}`\n",
-        f"{hash_note}",
+        f"- Asset Catalog Version: `{catalog_version}`\n"
+        f"{hash_note}"
         f"- Masterdata Version: `{masterdata_version}`"
     )
     create_github_release(
