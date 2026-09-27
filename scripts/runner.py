@@ -30,6 +30,7 @@ from scripts.download_masterdata import (
 from scripts.download_asset_catalogs import (
     get_catalog_version,
     download_catalogs,
+    get_catalogs_hash,
 )
 from scripts.download_all_assets import (
     download_all_assets_func,
@@ -37,6 +38,7 @@ from scripts.download_all_assets import (
 )
 from scripts.download_notations import download_notations_func
 from scripts.download_static_assets import download_static_assets_func
+from scripts.download_scenes import download_scenes_func
 
 KINDS = ("2d-assets", "3d-assets", "cri-assets")
 PLATFORMS = ("Android", "iOS")
@@ -306,19 +308,28 @@ def main():
             print(f"Removing source directory to free disk space: {static_dir}")
             shutil.rmtree(static_dir, ignore_errors=True)
 
+        print("\n--- Processing Scences Assets ---")
+        download_scenes_func(assets_dir=assets_dir)
+        scenes_dir = assets_dir / "scenes"
+        if scenes_dir.exists():
+            files_to_upload.extend(create_zips_from_dir(scenes_dir, output_dir, "scenes"))
+            print(f"Removing source directory to free disk space: {scenes_dir}")
+            shutil.rmtree(scenes_dir, ignore_errors=True)
+
     if action == "RELEASE_BOTH":
         print("\n--- Processing Asset Catalogs & Bundles ---")
         assets_dir = project_root / "_data" / "assets"
         download_catalogs(assets_dir)
 
         print("\nDownloading, packaging, and cleaning Asset Bundles per kind & platform...")
+        hash_note = ''
         for kind in KINDS:
             for platform in PLATFORMS:
                 source_dir = assets_dir / kind / platform.lower()
                 base_name = f"{kind}-{platform.lower()}"
                 print(f"\n--- Processing {kind} ({platform}) ---")
                 download_assets_for_kind_platform(kind, platform, assets_dir=assets_dir)
-
+                hash_note += f"- {kind} {platform} Catalog Hash: `{get_catalogs_hash(kind, platform, catalog_version)}`\n"
                 if source_dir.exists():
                     zips = create_zips_from_dir(source_dir, output_dir, base_name)
                     files_to_upload.extend(zips)
@@ -330,6 +341,7 @@ def main():
     notes = (
         f"Automated Release:\n"
         f"- Asset Catalog Version: `{catalog_version}`\n"
+        f"{hash_note}"
         f"- Masterdata Version: `{masterdata_version}`"
     )
     create_github_release(

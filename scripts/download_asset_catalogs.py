@@ -21,14 +21,17 @@ ASSET_URL = "https://assets-e.wds-stellarium.com/production"
 KINDS = ("2d-assets", "3d-assets", "cri-assets")
 PLATFORMS = ("Android", "iOS")
 
-
 def catalog_url(kind: str, platform: str, version: str) -> str:
     return f"{ASSET_URL}/{kind}/{platform}/{version}/catalog_{version}.json.br"
-
 
 def get_catalog_version() -> str:
     return str(environment().asset_version)
 
+def get_catalogs_hash(kind: str, platform: str, version: str) -> str:
+    url = f"{ASSET_URL}/{kind}/{platform}/{version}/catalog_{version}.hash"
+    req = urllib.request.Request(url, headers={"User-Agent": "server-of-dreams"})
+    data = urllib.request.urlopen(req, timeout=120).read().decode("utf-8").strip()
+    return str(data)
 
 def download_catalogs(out_dir: Path = OUT) -> str:
     version = get_catalog_version()
@@ -43,6 +46,7 @@ def download_catalogs(out_dir: Path = OUT) -> str:
                     url, headers={"User-Agent": "server-of-dreams"}
                 )
                 data = urllib.request.urlopen(req, timeout=120).read()
+                hash = get_catalogs_hash(kind, platform, version)
             except urllib.error.HTTPError as e:
                 print(f"  skipped ({e.code} {e.reason})")
                 continue
@@ -50,13 +54,16 @@ def download_catalogs(out_dir: Path = OUT) -> str:
             dest = out_dir / kind / platform.lower() / "catalog.json"
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(catalog)
+            
+            hash_dest = out_dir / kind / platform.lower() / "catalog.hash"
+            hash_dest.write_text(hash)
             print(
                 f"  {len(data)} br -> {len(catalog)} json -> {dest}"
             )
+            print(f"  hash: {hash} -> {hash_dest}")
             ok += 1
     print(f"wrote {ok} catalogs -> {out_dir}")
     return version
-
 
 def main() -> None:
     try:
