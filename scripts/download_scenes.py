@@ -23,8 +23,17 @@ _UA = "server-of-dreams"
 
 def load_episode_master() -> list:
     """Load EpisodeMaster.json from the github."""
-    data = json.loads(_fetch(MASTER_URL).decode("utf-8"))
-    return data
+    masterpath = OUT / "episode.json"
+    master = []
+    if not masterpath.is_file():
+        data = _fetch(MASTER_URL)
+        masterpath.parent.mkdir(parents=True, exist_ok=True)
+        masterpath.write_bytes(data)
+        master = json.loads(data.decode("utf-8"))
+    else:
+        master = json.loads(masterpath.read_text(encoding="utf-8"))
+
+    return master
 
 def _fetch(url: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
