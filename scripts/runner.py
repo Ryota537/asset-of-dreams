@@ -341,7 +341,7 @@ def main():
     notes = (
         f"Automated Release:\n"
         f"- Asset Catalog Version: `{catalog_version}`\n",
-        hash_note,
+        f"{hash_note}",
         f"- Masterdata Version: `{masterdata_version}`"
     )
     create_github_release(
